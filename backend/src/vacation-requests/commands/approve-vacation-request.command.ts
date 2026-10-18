@@ -1,7 +1,34 @@
 import { publish } from "../../shared/event-bus.js";
+import { HttpError } from "../../shared/http-error.js";
+import { AppDataSource } from "../../data-source.js";
+import { VacationRequest } from "../vacation-request.entity.js";
 import { vacationRequestApprovedEvent } from "../events/vacation-request-approved.event.js";
 
 export async function approveVacationRequest(id: string): Promise<void> {
-  // TODO: validator only; pending only; persist Approved
+  if (!isUuid(id)) {
+    throw new HttpError(400, "Vacation request ID must be a UUID");
+  }//checks if id is valid
+
+  const repository = AppDataSource.getRepository(VacationRequest);
+  const result = await repository.update(
+    { id, status: "Pending" },
+    { status: "Approved" },
+  ); // attempts to update the vacation request status to "Approved" if it is currently "Pending"
+  if (result.affected !== 1) {
+    const exists = await repository.exists({ where: { id } });
+    throw new HttpError(
+      exists ? 409 : 404,
+      exists
+        ? "Only pending requests can be approved"
+        : "Vacation request not found",
+    );
+  }
+
   await publish(vacationRequestApprovedEvent(id));
+}
+
+function isUuid(value: string): boolean {
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
+    value,
+  );
 }

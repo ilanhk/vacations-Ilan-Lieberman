@@ -1,0 +1,124 @@
+openapi: 3.0.3
+info:
+  title: Vacation Management API
+  version: 1.0.0
+paths:
+  /health:
+    get:
+      x-handler: shared/handlers/health#health
+      responses:
+        "200":
+          description: API is running
+  /auth/register:
+    post:
+      x-handler: auth/handlers/auth#register
+      x-inputParser: shared/handlers/common#parseJsonBody
+      responses:
+        "201":
+          description: Requester account created
+  /auth/login:
+    post:
+      x-handler: auth/handlers/auth#login
+      x-inputParser: shared/handlers/common#parseJsonBody
+      responses:
+        "200":
+          description: Login successful
+  /auth/logout:
+    post:
+      x-handler: auth/handlers/auth#logout
+      responses:
+        "204":
+          description: Logged out
+  /auth/me:
+    get:
+      x-handler: auth/handlers/auth#me
+      responses:
+        "200":
+          description: Currently logged-in user
+  /vacation-requests:
+    get:
+      x-handler: vacation-requests/handlers/vacation-requests#listVacationRequests
+      parameters:
+        - in: query
+          name: page
+          schema:
+            type: integer
+            minimum: 1
+          description: Page number (defaults to 1)
+        - in: query
+          name: limit
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+          description: Results per page (defaults to 10)
+        - in: query
+          name: status
+          schema:
+            type: string
+            enum: [Pending, Approved, Rejected]
+          description: Optional vacation status filter
+        - in: query
+          name: userId
+          schema:
+            type: string
+            format: uuid
+          description: Optional user filter for validators
+      responses:
+        "200":
+          description: Paginated vacation requests
+    post:
+      x-handler: vacation-requests/handlers/vacation-requests#createVacationRequestHandler
+      x-inputParser: shared/handlers/common#parseJsonBody
+      responses:
+        "201":
+          description: Vacation request created
+  /my-vacation-requests:
+    get:
+      x-handler: vacation-requests/handlers/vacation-requests#listMyVacationRequests
+      responses:
+        "200":
+          description: The logged-in user's own vacation requests (paginated)
+  /my-vacation-requests/booked:
+    get:
+      x-handler: vacation-requests/handlers/vacation-requests#listMyBookedDays
+      responses:
+        "200":
+          description: The logged-in user's pending and approved requests, unpaginated (for the calendar)
+  /vacation-requests/:id:
+    get:
+      x-handler: vacation-requests/handlers/vacation-requests#getVacationRequest
+      responses:
+        "200":
+          description: Vacation request found
+  /vacation-requests/:id/approve:
+    post:
+      x-handler: vacation-requests/handlers/vacation-requests#approveVacationRequestHandler
+      responses:
+        "200":
+          description: Vacation request approved
+  /vacation-requests/:id/reject:
+    post:
+      x-handler: vacation-requests/handlers/vacation-requests#rejectVacationRequestHandler
+      x-inputParser: shared/handlers/common#parseJsonBody
+      responses:
+        "200":
+          description: Vacation request rejected
+  /users:
+    get:
+      x-handler: users/handlers/users#listRequesters
+      responses:
+        "200":
+          description: Requesters (id and name), validator only
+  /users/:id:
+    get:
+      x-handler: users/handlers/users#findUserById
+      responses:
+        "200":
+          description: User found
+    put:
+      x-handler: users/handlers/users#updateUser
+      x-inputParser: shared/handlers/common#parseJsonBody
+      responses:
+        "200":
+          description: User updated
