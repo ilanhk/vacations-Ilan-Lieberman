@@ -1,83 +1,64 @@
-import bcrypt from "bcryptjs";
 import type { Request, Response } from "express";
-import jwt from "jsonwebtoken";
-import { AppDataSource } from "../data-source.js";
-import { sendJson } from "../shared/common-response.js";
-import { HttpError } from "../shared/http-error.js";
 import { User } from "../users/user.entity.js";
+import dataSource from "../data-source.js";
 
-type Credentials = {
-  email: string;
-  password: string;
-};
 
-function readCredentials(body: unknown): Credentials & { name?: string } {
-  if (typeof body !== "object" || body === null) {
-    throw new HttpError(400, "A JSON request body is required");
-  }
-  const input = body as Record<string, unknown>;
-  const email = typeof input.email === "string" ? input.email.trim().toLowerCase() : "";
-  const password = typeof input.password === "string" ? input.password : "";
-  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) || password.length < 8) {
-    throw new HttpError(400, "Enter a valid email and a password of at least 8 characters");
-  }
-  return {
-    email,
-    password,
-    ...(typeof input.name === "string" ? { name: input.name.trim() } : {}),
-  };
+export const register = async (req: Request, res: Response): Promise<void> => {
+    const { name, email, password } = req.body;
+    const user = await dataSource.getRepository(User).findOne({ where: { email } });
+    if (user) {
+        return res.status(400).json({ message: "User already exists" });
+    }
+    
+    try {
+        // TODO: validate credentials, return JWT
+        const newUser = await dataSource.getRepository(User).create({ name, email, password });
+        await dataSource.getRepository(User).save(newUser);
+        return res.status(201).json({ message: "User created successfully" }); 
+    } catch (error) {
+        res.status(500).json({ error: "Internal server error" });
+    }
 }
 
-function createToken(user: User): string {
-  const secret = process.env.JWT_SECRET;
-  if (!secret) {
-    throw new Error("JWT_SECRET is not configured");
-  }
-  return jwt.sign({ role: user.role }, secret, {
-    subject: user.id,
-    expiresIn: "12h",
-  });
+export const login = async (req: Request, res: Response): Promise<void> => {
+    const { email, password} = req.body;
+
+    const user = await dataSource.getRepository(User).findOne({ where: { email } }); // Find the user in the DB
+
+    if (user && (await user.matchPassword(password))) {
+
+        const userId = user._id + '';
+        const accessToken = generateAccessToken(userId);
+
+
+        await user.save();
+
+        // await redisClient.set(`user:${userId}`, JSON.stringify(user), { EX: redis_expiry }); 
+
+        res.status(200).json({
+        _id: user._id,
+        name: user.firstName,
+        email: user.email,
+        accessToken,
+        
+        });
+    } else {
+        return res.status(401).json({ message:'Invalid Email or Password' });
+    }
+    
+    try {
+        // TODO: validate credentials, return JWT
+        return res.status(501).json({ error: "Not implemented" });
+    } catch (error) {
+        return res.status(500).json({ error: "Internal server error" });
+    }
 }
 
-export async function register(req: Request, res: Response): Promise<void> {
-  const { name, email, password } = readCredentials(req.body);
-  if (!name || name.length > 120) {
-    throw new HttpError(400, "Name is required and must be at most 120 characters");
-  }
-  const repository = AppDataSource.getRepository(User);
-  if (await repository.findOneBy({ email })) {
-    throw new HttpError(409, "An account with this email already exists");
-  }
-
-  const user = repository.create({
-    name,
-    email,
-    password: await bcrypt.hash(password, 12),
-    role: "Requester",
-  });
-  await repository.save(user);
-  sendJson(res, 201, {
-    accessToken: createToken(user),
-    user: { id: user.id, name: user.name, email: user.email, role: user.role },
-  });
-}
-
-export async function login(req: Request, res: Response): Promise<void> {
-  const { email, password } = readCredentials(req.body);
-  const user = await AppDataSource.getRepository(User)
-    .createQueryBuilder("user")
-    .addSelect("user.password")
-    .where("user.email = :email", { email })
-    .getOne();
-  if (!user || !(await bcrypt.compare(password, user.password))) {
-    throw new HttpError(401, "Invalid email or password");
-  }
-  sendJson(res, 200, {
-    accessToken: createToken(user),
-    user: { id: user.id, name: user.name, email: user.email, role: user.role },
-  });
-}
-
-export function logout(_req: Request, res: Response): void {
-  res.status(204).end();
+export const logout = async (req: Request, res: Response): Promise<void> => {
+    const { userId } = req.body;
+    try {
+        
+    } catch (error) {
+        return res.status(500).json({ error: "Internal server error" });
+    }
 }

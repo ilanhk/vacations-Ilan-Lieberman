@@ -11,6 +11,7 @@ import { User } from "../users/user.entity.js";
 
 export type VacationRequestStatus = "Pending" | "Approved" | "Rejected";
 
+
 @Entity({ name: "vacation_requests" })
 export class VacationRequest {
   @PrimaryGeneratedColumn("uuid")
@@ -24,10 +25,10 @@ export class VacationRequest {
   user!: User;
 
   @Column({ name: "start_date", type: "date" })
-  startDate!: string;
+  startDate!: Date;
 
   @Column({ name: "end_date", type: "date" })
-  endDate!: string;
+  endDate!: Date;
 
   @Column({ type: "text", nullable: true })
   reason!: string | null;

@@ -1,13 +1,8 @@
-import {
-  Column,
-  CreateDateColumn,
-  Entity,
-  OneToMany,
-  PrimaryGeneratedColumn,
-} from "typeorm";
-import { VacationRequest } from "../vacation-requests/vacation-request.entity.js";
+import { Column, CreateDateColumn, Entity, PrimaryGeneratedColumn } from "typeorm";
 
 export type UserRole = "Requester" | "Validator";
+
+//Nothing to index here.
 
 @Entity({ name: "users" })
 export class User {
@@ -20,14 +15,11 @@ export class User {
   @Column({ type: "varchar", length: 255, unique: true })
   email!: string;
 
-  @Column({ type: "varchar", length: 255, select: false })
+  @Column({ type: "varchar", length: 255 })
   password!: string;
 
   @Column({ type: "varchar", length: 20 })
   role!: UserRole;
-
-  @OneToMany(() => VacationRequest, (request) => request.user)
-  vacationRequests!: VacationRequest[];
 
   @CreateDateColumn({ name: "created_at", type: "timestamptz" })
   createdAt!: Date;

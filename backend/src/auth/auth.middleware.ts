@@ -1,7 +1,6 @@
 import type { NextFunction, Request, Response } from "express";
-import jwt from "jsonwebtoken";
-import { sendJson } from "../shared/common-response.js";
 import type { UserRole } from "../users/user.entity.js";
+import verifyAccessToken from "./utils/verify-access-token.js";
 
 export type AuthUser = {
   id: string;
@@ -16,50 +15,34 @@ declare global {
   }
 }
 
-export function requireAuth(
-  req: Request,
-  res: Response,
-  next: NextFunction,
-): void {
-  const authorization = req.header("authorization");
-  const token = authorization?.startsWith("Bearer ")
-    ? authorization.slice(7)
-    : undefined;
-  const secret = process.env.JWT_SECRET;
+//Protect routes for registered users
+const requireAuth = async (req: Request, res: Response, next: NextFunction) => {
+  const accessTokenName = process.env.ACCESS_TOKEN_NAME!;
+  const accessToken = req.cookies[accessTokenName];
+  const jwtSecretAccess = process.env.JWT_SECRET_ACCESS!;
 
-  if (!secret) {
-    next(new Error("JWT_SECRET is not configured"));
-    return;
+  // console.log('Access token from cookie:', accessToken); 
+
+  if (!accessToken) {
+    return res.status(401).json({ message: 'Unauthorized access' });
   }
 
-  if (!token) {
-    sendJson(res, 401, { message: "Authentication required" });
-    return;
-  }
+  verifyAccessToken(req, res, next, accessToken, jwtSecretAccess);
+  console.log('access token:', accessToken);
+};
 
-  try {
-    const payload = jwt.verify(token, secret);
-    if (
-      typeof payload === "string" ||
-      typeof payload.sub !== "string" ||
-      (payload.role !== "Requester" && payload.role !== "Validator")
-    ) {
-      sendJson(res, 401, { message: "Invalid access token" });
-      return;
-    }
-    req.user = { id: payload.sub, role: payload.role };
-    next();
-  } catch {
-    sendJson(res, 401, { message: "Invalid or expired access token" });
-  }
-}
-
-export function requireRole(role: UserRole) {
-  return (req: Request, res: Response, next: NextFunction): void => {
-    if (req.user?.role !== role) {
-      sendJson(res, 403, { message: `Only ${role.toLowerCase()}s can perform this action` });
-      return;
-    }
-    next();
+const requester = (req: Request, res: Response, next: NextFunction) => {
+  if(req.user && req.user.role === "Requester") {
+     return next();
+  } else {
+      return res.status(401).json({ message: 'Not authorized as requester'});
   };
-}
+};
+
+const validator = (req: Request, res: Response, next: NextFunction) => {
+  if(req.user && req.user.role === "Validator") {
+      return next();
+  } else {
+      return res.status(401).json({ message: 'Not authorized as validator'});
+  };
+};
