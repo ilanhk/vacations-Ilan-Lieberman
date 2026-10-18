@@ -29,12 +29,14 @@ backend/
 frontend/
   src/
     api/                      Axios instance and API calls
-    components/               AppLayout, BookingCalendar, MyRequestsList, PaginationBar, RejectDialog, VacationRequestForm
+    components/               Reusable UI (calendar, request list, pagination, dialogs, form)
     composables/              usePaginatedList (shared table loading state)
-    stores/auth.ts            logged-in user state
+    stores/                   logged-in user state
     router/                   routes + role-based guards
-    views/                    Login, Register, VacationRequest, Validator, Sorry
+    views/                    One view per page
 ```
+
+Request flow: `root.yaml route -> handler (auth + input check) -> command -> database -> event`.
 
 ## Prerequisites
 
@@ -51,13 +53,20 @@ Create an empty database, for example:
 CREATE DATABASE vacations;
 ```
 
-You do not need to run any migration: the tables (`users`, `vacation_requests`) and their indexes are created automatically on first start (TypeORM `synchronize: true`, see Known limitations).
+No migration is needed: the tables (`users`, `vacation_requests`) and their indexes are created automatically on first start (TypeORM `synchronize: true`, see Known limitations).
 
 ### 2. Backend configuration
 
+macOS / Linux:
+
+```bash
+cp backend/.env.example backend/.env
+```
+
+Windows (PowerShell):
+
 ```powershell
-cd backend
-copy .env.example .env
+copy backend\.env.example backend\.env
 ```
 
 Edit `backend/.env`:
@@ -74,7 +83,7 @@ Edit `backend/.env`:
 
 From the project root:
 
-```powershell
+```bash
 npm run install:all
 ```
 
@@ -82,7 +91,7 @@ npm run install:all
 
 ### 4. Seed demo data
 
-```powershell
+```bash
 npm run seed
 ```
 
@@ -101,7 +110,7 @@ You can also create a Requester account from the **register** link on the login 
 
 Start both servers with one command from the project root:
 
-```powershell
+```bash
 npm run dev
 ```
 
@@ -110,15 +119,25 @@ npm run dev
 
 Or run them separately: `npm run dev` inside `backend/` and inside `frontend/`.
 
-The backend has no hot reload. Restart it after backend changes. A Requester is redirected to `/vacation-requests` after login, a Validator to `/validator`.
+The backend has no hot reload, so restart it after backend changes. A Requester is redirected to `/vacation-requests` after login, a Validator to `/validator`.
 
-Other useful commands:
+Other useful commands (from the project root):
 
-```powershell
-cd frontend; npm run build        # type-check + production build
-cd frontend; npm run lint
-cd backend;  npm run codegen      # regenerate HandlerRegistry.ts after changing root.yaml
+```bash
+npm --prefix frontend run build      # type-check + production build
+npm --prefix frontend run lint
+npm --prefix backend run codegen     # regenerate HandlerRegistry.ts after changing root.yaml
 ```
+
+## Assumptions
+
+The assignment leaves some points open. These are the interpretations used:
+
+- **Validators can also submit their own requests.** Both roles can use the booking calendar and "my requests" list. Approving or rejecting is restricted to validators.
+- **"Team vacation planning available for two roles"** is implemented as the booking calendar available to both roles. It shows the logged-in user's own Pending and Approved days, greys out the past and blocks ranges that cross a booked day. It does not show other people's leave.
+- **"End date must be after start date"** is read strictly: a request must span at least two different days, so same-day start and end is rejected.
+- **Rejected requests do not block dates.** They are ignored by the overlap check, so the user can book the same period again.
+- **Roles are assigned by the server.** Self-registration always creates a Requester. Validators come from the seed script.
 
 ## API
 
@@ -155,26 +174,25 @@ Paginated responses look like `{ data: [...], pagination: { page, limit, total, 
 
 ## Technical decisions
 
-- **Commands and events.** Each action is a command function (`commands/`) that validates, writes to the database, then publishes a domain event (`VacationRequestCreated / Approved / Rejected`) on a small in-memory event bus (`shared/event-bus.ts`). Handlers stay thin: authenticate, check role, parse input, call the command.
-- **Common Event Framework.** Routes are declared in `root.yaml` with an `x-handler` of the form `<file>#<exportedFunction>`. `cef-gen-handlers` generates `HandlerRegistry.ts` from it. `scripts/run-local.js` loads `.env` and sets the port, because CEF's dev server reads the port from the command line.
-- **Authentication.** JWT in an `HttpOnly`, `SameSite=Strict` cookie (not readable from JavaScript, so safer than localStorage), valid for 2 hours. Passwords are hashed with bcrypt and never returned. The role comes from the database for the signed user id, never from the client.
+- **Commands and events.** Each write is a command function (`commands/`) that validates, writes to the database, then publishes a domain event (`VacationRequestCreated / Approved / Rejected`) on a small in-memory event bus (`shared/event-bus.ts`). Reads (lists, get by id) skip commands and query directly. Handlers stay thin: authenticate, check role, parse input, call the command.
+- **Common Event Framework.** Routes live in a single `root.yaml` (`x-handler: <file>#<exportedFunction>`), and `cef-gen-handlers` generates `HandlerRegistry.ts` from it. CEF has no middleware, so each handler calls `authenticate` itself. `scripts/run-local.js` loads `.env` and sets the port, because CEF's dev server reads the port from the command line.
+- **Authentication.** JWT in an `HttpOnly`, `SameSite=Strict` cookie (not readable from JavaScript, so safer than localStorage), valid for 2 hours. Passwords are hashed with bcrypt and never returned. The role is read from the database for the signed user id, never from the client.
+- **Concurrency safety.** The overlap check and insert run in one SERIALIZABLE transaction. Approve and reject are single conditional `UPDATE ... WHERE status = 'Pending'` statements, so two validators acting at once cannot both succeed.
+- **Pagination and indexes.** Offset pagination in the database (`skip`/`take`) with a stable sort (`id` tiebreaker), a validated and capped `limit`, and `total`/`totalPages` in every response. Indexes on `vacation_requests`: `(user_id, start_date, end_date)` for overlap checks and "my requests", `(status, created_at)` for the status filter, `(created_at)` for the newest-first list, and `(user_id, created_at)` for the validator's user filter.
 - **Same-origin frontend.** In development Vite proxies `/api` to the backend, so the cookie is first-party and no CORS setup is needed.
-- **Concurrency safety.** The overlap check and insert run in one SERIALIZABLE transaction. Approve and reject are single conditional `UPDATE`s, so two validators acting at once cannot both succeed.
-- **Pagination.** Offset pagination in the database (`findAndCount` with `skip`/`take`), a stable sort with an `id` tiebreaker, validated `page`/`limit` with a cap, and `total`/`totalPages` in every response.
-- **Indexes** on `vacation_requests`: `(user_id, start_date, end_date)` for overlap checks and "my requests", `(status, created_at)` for the status filter, `(created_at)` for the newest-first list, and `(user_id, created_at)` for the validator's user filter.
-- **Frontend structure.** Reusable components (`MyRequestsList` is used by both roles, `PaginationBar`, `RejectDialog`), a `usePaginatedList` composable that cancels stale requests so a slow response cannot overwrite newer rows, and a tiny reactive auth store instead of a state library.
-- **Frontend behaviour.** Role-based router guards; validator filters and page are kept in the URL (`/validator?status=Pending&page=2`); a 401 on an expired session returns the user to the login page; a server error (5xx) or a submit taking longer than 20 seconds shows a "try again later" page.
-- **Team vacation planning.** The booking calendar marks days that are already Pending (amber) or Approved (green) for the logged-in user, greys out the past, and prevents choosing a range that crosses a booked day. Both roles can plan their own vacations.
+- **Frontend.** Reusable components (`MyRequestsList` serves both roles, plus `PaginationBar` and `RejectDialog`), a `usePaginatedList` composable that cancels stale requests, role-based router guards, validator filters kept in the URL, and a 401 on an expired session returns the user to the login page.
 
 ## Known limitations
 
 - **`synchronize: true`** creates and alters tables automatically. Fine for this assignment, but a real deployment should use TypeORM migrations.
-- **In-memory event bus.** Events are published in-process and nothing subscribes to them yet; they are lost on restart. A production version would use a queue/broker (and an outbox) and add subscribers such as email notifications.
+- **In-memory event bus.** Events are published in-process and are lost on restart. A production version would use a broker (and an outbox) so subscribers run independently.
 - **No automated tests.** Behaviour was verified manually and with API calls.
-- **Production serving.** Only the development setup (Vite proxy) is configured. A production deployment would need the frontend built and served behind the same origin as the API (or CORS configured), and `NODE_ENV=production` so the cookie gets the `Secure` flag.
+- **Production serving.** Only the development setup (Vite proxy) is configured. A production deployment needs the frontend served behind the same origin as the API (or CORS configured), and `NODE_ENV=production` so the cookie gets the `Secure` flag.
+- **No refresh tokens.** The 2-hour access token means users log in again after it expires. Production would use short-lived access tokens plus a revocable refresh token.
 - **Offset pagination** gets slower on very deep pages; keyset (cursor) pagination would scale better.
-- **Registration** is open and always creates Requesters. Validators come from the seed (there is no admin screen to promote users).
+- **Registration** is open and always creates Requesters. There is no admin screen to promote users to Validator.
 - **No rate limiting or account lockout** on login.
+- **One database query per request** for authentication, so the role is always current. This could be cached at scale.
 - **A validator can approve their own request.** There is no separation-of-duties rule.
 - **Team planning is per user.** The calendar shows the user's own bookings, not other team members'.
-- **Dates are date-only** (no time zones or half days) and weekends/public holidays are not excluded from a request.
+- **Dates are date-only** (no time zones or half days), and weekends and public holidays are not excluded from a request.
