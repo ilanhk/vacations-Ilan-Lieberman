@@ -20,7 +20,7 @@ export async function rejectVacationRequest(
   }
 
   const repository = AppDataSource.getRepository(VacationRequest);
-  const result = await repository.update(
+  const result = await repository.update( // Same atomic conditional update as approve: only a Pending request can be rejected.
     { id, status: "Pending" },
     { status: "Rejected", comments: normalizedComment },
   );
@@ -33,7 +33,8 @@ export async function rejectVacationRequest(
         : "Vacation request not found",
     );
   }
-
+  // The command's last step: announce the fact that a request was rejected.
+  // The event is published only after the database update succeeded.
   await publish(vacationRequestRejectedEvent(id, normalizedComment));
 }
 

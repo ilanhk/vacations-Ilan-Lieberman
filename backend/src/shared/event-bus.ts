@@ -1,3 +1,12 @@
+// Minimal in-memory publish/subscribe bus for domain events.
+// Flow: handler -> command (validates and changes state) -> publish(event).
+// The command only announces what happened and doesn't know who listens, so
+// side effects (email, audit log, notifications) can be added with subscribe()
+// without touching command code.
+// No subscribers are registered yet; this is the extension point. For several
+// backend instances or guaranteed delivery, replace it with a broker (e.g. Redis).
+
+
 export type DomainEvent = {
   name: string;
   occurredAt: Date;

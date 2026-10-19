@@ -64,6 +64,8 @@ export function roleError(role: UserRole): Response {
 
 
 // function to create an access token cookie
+// storing the access token in an HttpOnly cookie for secure client-side storage
+//safer than storing it in localStorage
 export function createAccessTokenResponse(
   status: number,
   body: object,
@@ -79,6 +81,9 @@ export function createAccessTokenResponse(
   const token = jwt.sign({ userId }, secret, { expiresIn: expiresInSeconds });
   const secure = process.env.NODE_ENV === "production" ? "; Secure" : "";
   const cookie = `${cookieName}=${encodeURIComponent(token)}; HttpOnly; SameSite=Strict; Path=/; Max-Age=${expiresInSeconds}${secure}`;
+  // The JWT goes in an HttpOnly cookie, not localStorage: JavaScript can't read it,
+  // so an XSS bug can't steal the token. SameSite=Strict stops the browser sending it
+  // on cross-site requests (CSRF protection). Secure is added in production (HTTPS only).
 
   return new Response(status, body, { "Set-Cookie": cookie });
 }
@@ -90,7 +95,7 @@ export function clearAccessTokenResponse(): Response {
     throw new Error("ACCESS_TOKEN_NAME is not configured");
   }
   const secure = process.env.NODE_ENV === "production" ? "; Secure" : "";
-  const cookie = `${cookieName}=; HttpOnly; SameSite=Strict; Path=/; Max-Age=0${secure}`;
+  const cookie = `${cookieName}=; HttpOnly; SameSite=Strict; Path=/; Max-Age=0${secure}`; // Max-Age=0 makes the browser delete the cookie.
   return new Response(204, {}, { "Set-Cookie": cookie });
 }
 

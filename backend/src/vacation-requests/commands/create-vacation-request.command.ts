@@ -23,6 +23,8 @@ export async function createVacationRequest(
   }
 
   try {
+    // SERIALIZABLE so two simultaneous requests can't both pass the overlap check.
+    // Rejected requests are ignored (those days are free again).
     const vacationRequest = await AppDataSource.transaction(
       "SERIALIZABLE",
       async (manager) => {
@@ -57,6 +59,8 @@ export async function createVacationRequest(
       },
     );
 
+    // Announce the fact that the vacation request was created, only after the transaction succeeded.
+    // The call sits inside the transaction callback, so it runs before the commit, and a subscriber failure would roll back the insert.
     await publish(
       vacationRequestCreatedEvent(
         vacationRequest.id,

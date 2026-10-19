@@ -14,6 +14,11 @@ export async function approveVacationRequest(id: string): Promise<void> {
     { id, status: "Pending" },
     { status: "Approved" },
   ); // attempts to update the vacation request status to "Approved" if it is currently "Pending"
+
+  // Single conditional UPDATE (WHERE status = 'Pending') instead of read-then-write.
+  // The status check and the change happen atomically in the database, so two
+  // validators acting at once can't both succeed, and an Approved or Rejected
+  // request can never be modified. affected !== 1 means it wasn't Pending.
   if (result.affected !== 1) {
     const exists = await repository.exists({ where: { id } });
     throw new HttpError(
@@ -24,6 +29,7 @@ export async function approveVacationRequest(id: string): Promise<void> {
     );
   }
 
+  // Announce the fact that the request was approved, only after the update succeeded.
   await publish(vacationRequestApprovedEvent(id));
 }
 

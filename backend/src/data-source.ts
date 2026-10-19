@@ -17,7 +17,7 @@ export const AppDataSource = new DataSource({
   url: databaseUrl,
   ssl: databaseUrl.includes("sslmode=require") ? { rejectUnauthorized: false } : false,
   entities: [User, VacationRequest],
-  synchronize: true,
+  synchronize: true, //acceptable for this assignment/development, but not recommended for production (can  accidentaly remove/rewrite the database schema)
   logging: false,
 });
 
